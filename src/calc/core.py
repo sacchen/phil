@@ -38,6 +38,27 @@ from sympy.parsing.sympy_parser import (
 x, y, z, t = symbols("x y z t")
 f = Function("f")
 
+
+def _infer_variable(expr, op_name: str):
+    free_symbols = sorted(expr.free_symbols, key=str)
+    if len(free_symbols) == 1:
+        return free_symbols[0]
+    if not free_symbols:
+        raise ValueError(f"{op_name} requires a variable (no symbols found)")
+    raise ValueError(f"ambiguous variable for {op_name}; pass one explicitly")
+
+
+def _d(expr, var=None):
+    if var is None:
+        var = _infer_variable(expr, "d(expr)")
+    return diff(expr, var)
+
+
+def _int(expr, var=None):
+    if var is None:
+        var = _infer_variable(expr, "int(expr)")
+    return integrate(expr, var)
+
 LOCALS_DICT = {
     "x": x,
     "y": y,
@@ -46,8 +67,8 @@ LOCALS_DICT = {
     "pi": pi,
     "e": E,
     "f": f,
-    "d": lambda expr, var: diff(expr, var),
-    "int": lambda expr, var: integrate(expr, var),
+    "d": _d,
+    "int": _int,
     "solve": solve,
     "dsolve": dsolve,
     "Eq": Eq,

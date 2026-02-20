@@ -60,7 +60,7 @@ REPL commands:
 - `:h` / `:help` show help
 - `:examples` show sample expressions
 - `:v` / `:version` show current version
-- `:update` print update command
+- `:update` / `:check` compare current vs latest version and print update command
 - `:q` / `:quit` / `:x` exit
 
 The REPL starts with a short hint line and prints targeted `hint:` messages on common errors.
@@ -100,12 +100,13 @@ Quick check in CLI:
 ```bash
 calc :version
 calc :update
+calc :check
 ```
 
 In REPL:
 
 - `:version` shows your installed version.
-- `:update` prints the exact update command.
+- `:update`/`:check` show current version, latest known release, and update command.
 
 For release notifications on GitHub, use "Watch" -> "Custom" -> "Releases only" on the repo page.
 
@@ -202,7 +203,8 @@ If you get stuck, run `:examples` or `:h`.
 
 - `^` is exponentiation (`x^2`)
 - `!` is factorial (`5!`)
-- `*` is required for multiplication (`2*x`, not `2x`)
+- relaxed mode (default) allows implicit multiplication (`2x`); use `--strict` to require `2*x`
+- `d(expr)` / `int(expr)` infer the variable when exactly one symbol is present
 - Undefined symbols raise an error
 
 ## Safety limits

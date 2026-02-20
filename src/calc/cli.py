@@ -4,14 +4,18 @@ import os
 import shutil
 import subprocess
 import sys
+from json import JSONDecodeError, loads
 from importlib.metadata import PackageNotFoundError, version as package_version
+from urllib.error import URLError
 from urllib.parse import quote_plus
+from urllib.request import urlopen
 
 from sympy import latex as to_latex
 
 from .core import evaluate
 
 PACKAGE_NAME = "calc-cli"
+UPDATE_CMD = "uv tool upgrade calc-cli"
 
 
 def _calc_version() -> str:
@@ -38,13 +42,13 @@ HELP_TEXT = (
     "  --copy-wa       copy WolframAlpha link to clipboard when shown\n"
     "\n"
     "upgrade:\n"
-    "  uv tool upgrade calc-cli\n"
+    f"  {UPDATE_CMD}\n"
     "\n"
     "repl commands:\n"
     "  :h, :help      show this help\n"
     "  :examples      show example expressions\n"
     "  :v, :version   show version\n"
-    "  :update        show update command\n"
+    "  :update, :check  check current vs latest version\n"
     "  :q, :quit, :x  quit\n"
     "\n"
     "quick examples:\n"
@@ -105,7 +109,7 @@ def _copy_to_clipboard(text: str) -> bool:
 
 def _print_wolfram_hint(expr: str, copy_link: bool = False) -> None:
     url = _wolframalpha_url(expr)
-    clickable = _format_clickable_link("Open WolframAlpha", url)
+    clickable = _format_clickable_link(url, url)
     print(f"hint: try WolframAlpha: {clickable}", file=sys.stderr)
     if copy_link:
         if _copy_to_clipboard(url):
@@ -140,6 +144,34 @@ def _format_result(value, latex_output: bool) -> str:
     if not latex_output:
         return str(value)
     return to_latex(value)
+
+
+def _latest_pypi_version() -> str | None:
+    url = f"https://pypi.org/pypi/{PACKAGE_NAME}/json"
+    try:
+        with urlopen(url, timeout=2.0) as response:
+            payload = loads(response.read().decode("utf-8"))
+        return payload.get("info", {}).get("version")
+    except (OSError, URLError, TimeoutError, ValueError, JSONDecodeError):
+        return None
+
+
+def _print_update_status() -> None:
+    if VERSION == "dev":
+        print("current version: dev (local checkout)")
+        print("latest version: unknown from local checkout")
+        print("install latest local changes with: uv tool install --force --reinstall --refresh .")
+        return
+
+    latest = _latest_pypi_version()
+    print(f"current version: {VERSION}")
+    if latest is None:
+        print("latest version: unavailable (offline or PyPI unreachable)")
+    elif latest == VERSION:
+        print(f"latest version: {latest} (up to date)")
+    else:
+        print(f"latest version: {latest} (update available)")
+    print(f"update with: {UPDATE_CMD}")
 
 
 def _parse_options(args: list[str]) -> tuple[bool, bool, bool, bool, list[str]]:
@@ -190,8 +222,8 @@ def _handle_repl_command(expr: str) -> bool:
     if expr in {":v", ":version"}:
         print(f"calc v{VERSION}")
         return True
-    if expr == ":update":
-        print("update with: uv tool upgrade calc-cli")
+    if expr in {":update", ":check"}:
+        _print_update_status()
         return True
     if expr.startswith(":"):
         print("E: unknown command", file=sys.stderr)
@@ -219,8 +251,8 @@ def run(argv: list[str] | None = None) -> int:
         if expr in {":v", ":version"}:
             print(f"calc v{VERSION}")
             return 0
-        if expr == ":update":
-            print("update with: uv tool upgrade calc-cli")
+        if expr in {":update", ":check"}:
+            _print_update_status()
             return 0
         try:
             print(_format_result(evaluate(expr, relaxed=relaxed), latex_output))
@@ -240,7 +272,7 @@ def run(argv: list[str] | None = None) -> int:
                 continue
             if _handle_repl_command(expr):
                 continue
-            print(_format_result(evaluate(expr, relaxed=True), latex_output))
+            print(_format_result(evaluate(expr, relaxed=relaxed), latex_output))
             if always_wa or _is_complex_expression(expr):
                 _print_wolfram_hint(expr, copy_link=copy_wa)
         except (EOFError, KeyboardInterrupt):

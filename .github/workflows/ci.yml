@@ -13,4 +13,4 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: uv run --group dev pytest
+      - run: uv run --group dev pytest --cov=calc --cov-report=term-missing --cov-fail-under=90

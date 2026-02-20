@@ -11,8 +11,36 @@ def test_derivative():
     assert str(evaluate("d(x^3 + 2*x, x)")) == "3*x**2 + 2"
 
 
+def test_derivative_infers_single_symbol():
+    assert str(evaluate("d(x^3 + 2*x)")) == "3*x**2 + 2"
+
+
+def test_derivative_inference_ambiguous():
+    with pytest.raises(ValueError, match="ambiguous variable"):
+        evaluate("d(x*y)")
+
+
+def test_derivative_inference_no_symbols():
+    with pytest.raises(ValueError, match="no symbols found"):
+        evaluate("d(42)")
+
+
 def test_integral():
     assert str(evaluate("int(sin(x), x)")) == "-cos(x)"
+
+
+def test_integral_infers_single_symbol():
+    assert str(evaluate("int(sin(x))")) == "-cos(x)"
+
+
+def test_integral_inference_ambiguous():
+    with pytest.raises(ValueError, match="ambiguous variable"):
+        evaluate("int(x + y)")
+
+
+def test_integral_inference_no_symbols():
+    with pytest.raises(ValueError, match="no symbols found"):
+        evaluate("int(7)")
 
 
 def test_solve():
@@ -28,6 +56,11 @@ def test_blocks_import_injection():
         evaluate('__import__("os").system("echo bad")')
 
 
+def test_blocks_empty_expression():
+    with pytest.raises(ValueError, match="empty expression"):
+        evaluate("   ")
+
+
 def test_blocks_dunder_access():
     with pytest.raises(ValueError, match="blocked token"):
         evaluate("x.__class__")
@@ -37,6 +70,18 @@ def test_blocks_long_expression():
     expr = "1+" * 2000 + "1"
     with pytest.raises(ValueError, match="expression too long"):
         evaluate(expr)
+
+
+def test_blocks_newline_and_semicolon():
+    with pytest.raises(ValueError, match="blocked token"):
+        evaluate("1+2\n3")
+    with pytest.raises(ValueError, match="blocked token"):
+        evaluate("1+2;3")
+
+
+def test_normalizes_ln_and_unicode_minus():
+    assert str(evaluate("ln(x)")) == "log(x)"
+    assert str(evaluate("2−1")) == "1"
 
 
 def test_relaxed_parses_braces_ln_and_implicit_multiplication():

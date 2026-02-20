@@ -47,6 +47,9 @@ This project is a standard `uv` package:
 This significantly reduces parser attack surface for CLI usage. It is still not a hardened sandbox for arbitrary untrusted multi-tenant input.
 
 By default, CLI evaluation uses relaxed parsing (`implicit_multiplication_application`) to make long calculator-style expressions easier to enter.
+`--strict` disables relaxed parsing in both one-shot and REPL modes.
+
+`d(expr)` and `int(expr)` can infer the variable only when the expression has exactly one free symbol. Ambiguous or symbol-free expressions must pass the variable explicitly.
 
 ## Exit-code behavior
 
@@ -61,7 +64,7 @@ By default, CLI evaluation uses relaxed parsing (`implicit_multiplication_applic
   - `:h` or `:help` shows available commands
   - `:examples` shows a compact learning set
   - `:version` shows installed version
-  - `:update` prints the upgrade command
+  - `:update` / `:check` compare current vs latest version and print upgrade command
   - `:q` or `:quit` exits
 - Errors are terse and prefixed with `E:`.
 - Common failures include contextual `hint:` lines.

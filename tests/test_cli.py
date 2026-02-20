@@ -35,6 +35,12 @@ def test_cli_help_flag():
     assert ":examples" in proc.stdout
 
 
+def test_cli_unknown_option_exit_code():
+    proc = run_cli("--wat")
+    assert proc.returncode == 1
+    assert "unknown option" in proc.stderr
+
+
 def test_cli_examples_shortcut():
     proc = run_cli(":examples")
     assert proc.returncode == 0
@@ -80,6 +86,31 @@ def test_repl_error_shows_wolframalpha_hint():
     assert "hint: try WolframAlpha:" in proc.stderr
 
 
+def test_repl_default_relaxed_accepts_implicit_multiplication():
+    proc = subprocess.run(
+        [sys.executable, "-m", "calc"],
+        input="2x\n:q\n",
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0
+    assert "2*x" in proc.stdout
+
+
+def test_repl_strict_rejects_implicit_multiplication():
+    proc = subprocess.run(
+        [sys.executable, "-m", "calc", "--strict"],
+        input="2x\n:q\n",
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0
+    assert "E:" in proc.stderr
+    assert "invalid syntax" in proc.stderr
+
+
 def test_cli_latex_output():
     proc = run_cli("--latex", "d(x^2, x)")
     assert proc.returncode == 0
@@ -109,4 +140,12 @@ def test_cli_version_shortcut():
 def test_cli_update_shortcut():
     proc = run_cli(":update")
     assert proc.returncode == 0
+    assert "current version:" in proc.stdout
     assert "uv tool upgrade calc-cli" in proc.stdout
+
+
+def test_cli_check_shortcut():
+    proc = run_cli(":check")
+    assert proc.returncode == 0
+    assert "current version:" in proc.stdout
+    assert "update with:" in proc.stdout
