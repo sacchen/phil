@@ -41,6 +41,7 @@ from sympy.parsing.sympy_parser import (
 
 x, y, z, t = symbols("x y z t")
 f = Function("f")
+yf = Function("y")
 
 
 def _infer_variable(expr, op_name: str):
@@ -71,6 +72,7 @@ LOCALS_DICT = {
     "pi": pi,
     "e": E,
     "f": f,
+    "yf": yf,
     "d": _d,
     "int": _int,
     "solve": solve,
@@ -114,6 +116,25 @@ RELAXED_TRANSFORMS = (
 MAX_EXPRESSION_CHARS = 2000
 BLOCKED_PATTERN = re.compile(r"(__|;|\n|\r)")
 ASSIGNMENT_PATTERN = re.compile(r"^\s*([A-Za-z][A-Za-z0-9_]*)\s*=\s*(.+)\s*$")
+EQUALITY_PATTERN = re.compile(r"(?<![<>=!])=(?!=)")
+LEIBNIZ_SIMPLE_PATTERN = re.compile(
+    r"\bd\s*([A-Za-z][A-Za-z0-9_]*(?:\([^()]*\))?)\s*/\s*d\s*([A-Za-z][A-Za-z0-9_]*)\b"
+)
+ODE_SHORT_EQ_PATTERN = re.compile(
+    r"^\s*d\s*([A-Za-z][A-Za-z0-9_]*)\s*/\s*d\s*([A-Za-z][A-Za-z0-9_]*)\s*=\s*(.+?)\s*$"
+)
+
+
+def _dependent_expr(dep: str, var: str) -> str:
+    if dep == "y":
+        return f"yf({var})"
+    if dep == "f":
+        return f"f({var})"
+    return dep
+
+
+def _replace_bare_dependent(rhs: str, dep: str, dep_expr: str) -> str:
+    return re.sub(rf"\b{re.escape(dep)}\b(?!\s*\()", dep_expr, rhs)
 
 
 def _validate_expression(expression: str) -> None:
@@ -129,17 +150,30 @@ def normalize_expression(expression: str) -> str:
     normalized = expression.replace("{", "(").replace("}", ")").replace("−", "-")
     # Accept common math shorthand from CAS/calculator input style.
     normalized = re.sub(r"\bln\s*\(", "log(", normalized)
+    # Treat y(x) as an ODE function call while keeping y available as a symbol.
+    normalized = re.sub(r"\by\s*\(", "yf(", normalized)
+    ode_match = ODE_SHORT_EQ_PATTERN.match(normalized)
+    if ode_match:
+        dep, var, rhs = ode_match.group(1), ode_match.group(2), ode_match.group(3)
+        dep_expr = _dependent_expr(dep, var)
+        rhs = _replace_bare_dependent(rhs, dep, dep_expr)
+        return f"Eq(d({dep_expr}, {var}), {rhs})"
     # Support Leibniz-style shorthand: d(expr)/dvar -> d(expr, var)
     normalized = re.sub(
         r"\bd\s*\((.+?)\)\s*/\s*d\s*([A-Za-z][A-Za-z0-9_]*)\b",
         r"d(\1, \2)",
         normalized,
     )
-    normalized = re.sub(
-        r"\bd\s*([A-Za-z][A-Za-z0-9_]*(?:\([^()]*\))?)\s*/\s*d\s*([A-Za-z][A-Za-z0-9_]*)\b",
-        r"d(\1, \2)",
+    normalized = LEIBNIZ_SIMPLE_PATTERN.sub(
+        lambda m: f"d({_dependent_expr(m.group(1), m.group(2))}, {m.group(2)})",
         normalized,
     )
+    if EQUALITY_PATTERN.search(normalized) and not ASSIGNMENT_PATTERN.match(normalized):
+        lhs, rhs = EQUALITY_PATTERN.split(normalized, maxsplit=1)
+        lhs = lhs.strip()
+        rhs = rhs.strip()
+        if lhs and rhs:
+            normalized = f"Eq({lhs}, {rhs})"
     return normalized
 
 

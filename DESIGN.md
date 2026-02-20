@@ -73,9 +73,13 @@ Matrix helpers are exposed in the allowed namespace (`Matrix`, `eye`, `zeros`, `
 - Common failures include contextual `hint:` lines.
 - Evaluation failures include a WolframAlpha URL hint for optional browser lookup.
 - Complex successful expressions also show a WolframAlpha equivalent hint.
+- REPL accepts inline CLI options (`--latex ...`, `--format ...`, etc.) and `phil ...`-prefixed lines.
 - `--wa` forces hints for all expressions; `--copy-wa` attempts clipboard copy.
+- `--color auto|always|never` controls ANSI color for diagnostic stderr lines (`E:` and `hint:`).
+- `NO_COLOR` disables auto color mode.
 - Optional LaTeX output via `--latex`, `--latex-inline`, or `--latex-block`.
 - Optional output formats via `--format` (`plain`, `pretty`, `latex`, `latex-inline`, `latex-block`).
+- ODE shorthand `dy/dx = y` is normalized to an `Eq(...)` expression using `y(x)` semantics.
 
 ## Startup time
 

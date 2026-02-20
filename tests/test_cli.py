@@ -123,6 +123,30 @@ def test_repl_strict_rejects_implicit_multiplication():
     assert "invalid syntax" in proc.stderr
 
 
+def test_repl_inline_option_for_latex():
+    proc = subprocess.run(
+        [sys.executable, "-m", "calc"],
+        input="--latex d(x^2, x)\n:q\n",
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0
+    assert "2 x" in proc.stdout
+
+
+def test_repl_prefixed_command_style_line():
+    proc = subprocess.run(
+        [sys.executable, "-m", "calc"],
+        input='phil --latex "d(x^2, x)"\n:q\n',
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0
+    assert "2 x" in proc.stdout
+
+
 def test_cli_latex_output():
     proc = run_cli("--latex", "d(x^2, x)")
     assert proc.returncode == 0
@@ -158,6 +182,20 @@ def test_cli_unknown_format_mode():
     proc = run_cli("--format", "wat", "2+2")
     assert proc.returncode == 1
     assert "unknown format mode" in proc.stderr
+
+
+def test_cli_color_always_styles_diagnostics():
+    proc = run_cli("--color=always", "bad(")
+    assert proc.returncode == 1
+    assert "\x1b[31mE:" in proc.stderr
+    assert "\x1b[33mhint:" in proc.stderr
+
+
+def test_cli_color_never_disables_styles():
+    proc = run_cli("--color=never", "bad(")
+    assert proc.returncode == 1
+    assert "\x1b[31m" not in proc.stderr
+    assert "\x1b[33m" not in proc.stderr
 
 
 def test_cli_relaxed_long_expression():

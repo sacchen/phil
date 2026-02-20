@@ -19,6 +19,10 @@ def test_derivative_leibniz_with_function():
     assert str(evaluate("df(t)/dt")) == "Derivative(f(t), t)"
 
 
+def test_ode_shorthand_equation_normalizes():
+    assert str(evaluate("dy/dx = y")) == "Eq(y(x), Derivative(y(x), x))"
+
+
 def test_derivative_infers_single_symbol():
     assert str(evaluate("d(x^3 + 2*x)")) == "3*x**2 + 2"
 
@@ -128,3 +132,8 @@ def test_relaxed_parses_second_long_expression():
     out = str(evaluate(expr, relaxed=True))
     assert "exp(" in out
     assert "exp(-5*t)" in out
+
+
+def test_dsolve_with_y_of_x_notation():
+    out = str(evaluate("dsolve(Eq(d(y(x), x), y(x)), y(x))", relaxed=True))
+    assert "Eq(y(x), C1*exp(x))" in out

@@ -19,7 +19,7 @@ def test_parse_options_unknown_raises():
 
 
 def test_parse_options_flags():
-    format_mode, relaxed, simplify_output, always_wa, copy_wa, rest = cli._parse_options(
+    format_mode, relaxed, simplify_output, always_wa, copy_wa, color_mode, rest = cli._parse_options(
         ["--latex", "--strict", "--wa", "--copy-wa", "2+2"]
     )
     assert format_mode == "latex"
@@ -27,6 +27,7 @@ def test_parse_options_flags():
     assert simplify_output is True
     assert always_wa is True
     assert copy_wa is True
+    assert color_mode == "auto"
     assert rest == ["2+2"]
 
 
@@ -38,7 +39,7 @@ def test_parse_options_latex_modes():
 
 
 def test_parse_options_format_and_no_simplify():
-    format_mode, _, simplify_output, _, _, rest = cli._parse_options(
+    format_mode, _, simplify_output, _, _, _, rest = cli._parse_options(
         ["--format", "pretty", "--no-simplify", "2+2"]
     )
     assert format_mode == "pretty"
@@ -47,10 +48,26 @@ def test_parse_options_format_and_no_simplify():
 
 
 def test_parse_options_double_dash_and_single_dash_literal():
-    _, _, _, _, _, rest = cli._parse_options(["--", "--not-an-option"])
+    _, _, _, _, _, _, rest = cli._parse_options(["--", "--not-an-option"])
     assert rest == ["--not-an-option"]
-    _, _, _, _, _, rest = cli._parse_options(["-1"])
+    _, _, _, _, _, _, rest = cli._parse_options(["-1"])
     assert rest == ["-1"]
+
+
+def test_parse_options_color_modes():
+    *_, color_mode, rest = cli._parse_options(["--color", "always", "2+2"])
+    assert color_mode == "always"
+    assert rest == ["2+2"]
+    *_, color_mode, rest = cli._parse_options(["--color=never", "2+2"])
+    assert color_mode == "never"
+    assert rest == ["2+2"]
+
+
+def test_parse_options_color_mode_errors():
+    with pytest.raises(ValueError, match="missing value for --color"):
+        cli._parse_options(["--color"])
+    with pytest.raises(ValueError, match="unknown color mode"):
+        cli._parse_options(["--color", "nope"])
 
 
 def test_hint_for_error_messages():
@@ -89,6 +106,23 @@ def test_format_clickable_link_tty(monkeypatch):
     out = cli._format_clickable_link("Open", "https://example.com")
     assert "https://example.com" in out
     assert "\033]8;;" in out
+
+
+def test_style_respects_color_mode(monkeypatch):
+    monkeypatch.setattr(cli.sys.stderr, "isatty", lambda: True)
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.setenv("TERM", "xterm-256color")
+    assert "\033[31m" in cli._style("E: fail", color="red", stream=cli.sys.stderr, color_mode="auto")
+    assert "\033[31m" in cli._style("E: fail", color="red", stream=cli.sys.stderr, color_mode="always")
+    assert "\033[31m" not in cli._style("E: fail", color="red", stream=cli.sys.stderr, color_mode="never")
+
+
+def test_style_respects_no_color(monkeypatch):
+    monkeypatch.setattr(cli.sys.stderr, "isatty", lambda: True)
+    monkeypatch.setenv("NO_COLOR", "1")
+    monkeypatch.setenv("TERM", "xterm-256color")
+    out = cli._style("hint", color="yellow", stream=cli.sys.stderr, color_mode="auto")
+    assert "\033[33m" not in out
 
 
 def test_copy_to_clipboard_success(monkeypatch):
@@ -233,7 +267,11 @@ def test_run_shortcut_commands(monkeypatch, capsys):
 
 def test_run_one_shot_prints_wa_when_forced(monkeypatch, capsys):
     monkeypatch.setattr(cli, "evaluate", lambda expr, **kwargs: 4)
-    monkeypatch.setattr(cli, "_print_wolfram_hint", lambda expr, copy_link=False: print("WA", file=cli.sys.stderr))
+    monkeypatch.setattr(
+        cli,
+        "_print_wolfram_hint",
+        lambda expr, copy_link=False, color_mode="auto": print("WA", file=cli.sys.stderr),
+    )
     rc = cli.run(["--wa", "2+2"])
     err = capsys.readouterr().err
     assert rc == 0
@@ -285,6 +323,20 @@ def test_handle_repl_commands(monkeypatch, capsys):
     assert cli._handle_repl_command("2+2") is False
     err = capsys.readouterr().err
     assert "unknown command" in err
+
+
+def test_try_parse_repl_inline_options():
+    parsed = cli._try_parse_repl_inline_options("--latex 2+2")
+    assert parsed is not None
+    assert parsed[0] == "latex"
+    assert parsed[-1] == ["2+2"]
+
+    parsed = cli._try_parse_repl_inline_options("phil --latex 2+2")
+    assert parsed is not None
+    assert parsed[0] == "latex"
+    assert parsed[-1] == ["2+2"]
+
+    assert cli._try_parse_repl_inline_options("2+2") is None
 
 
 def test_main_module_executes():

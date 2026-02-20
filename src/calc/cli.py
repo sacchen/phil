@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -33,7 +34,7 @@ HELP_TEXT = (
     f"{CLI_NAME} v{VERSION} - symbolic CLI calculator\n"
     "\n"
     "usage:\n"
-    f"  {CLI_NAME} [--format MODE] [--latex|--latex-inline|--latex-block] [--strict] [--no-simplify] [--wa] [--copy-wa] '<expression>'\n"
+    f"  {CLI_NAME} [--format MODE] [--latex|--latex-inline|--latex-block] [--strict] [--no-simplify] [--wa] [--copy-wa] [--color MODE] '<expression>'\n"
     f"  {CLI_NAME}\n"
     f"  {CLI_NAME} :examples\n"
     "\n"
@@ -46,6 +47,7 @@ HELP_TEXT = (
     "  --no-simplify   skip simplify() on parsed expressions\n"
     "  --wa            always print WolframAlpha equivalent link\n"
     "  --copy-wa       copy WolframAlpha link to clipboard when shown\n"
+    "  --color MODE    diagnostics color: auto, always, never\n"
     "\n"
     "upgrade:\n"
     f"  {UPDATE_CMD}\n"
@@ -74,6 +76,13 @@ EXAMPLES_TEXT = (
     "  dsolve(Eq(f(t).diff(t), f(t)), f(t))\n"
     "  N(pi, 20)"
 )
+COLOR_MODES = {"auto", "always", "never"}
+ANSI_COLORS = {
+    "red": "\033[31m",
+    "yellow": "\033[33m",
+    "bold": "\033[1m",
+}
+ANSI_RESET = "\033[0m"
 
 
 def _wolframalpha_url(expr: str) -> str:
@@ -92,6 +101,29 @@ def _format_clickable_link(label: str, url: str) -> str:
         return url
     esc = "\033"
     return f"{esc}]8;;{url}{esc}\\{label}{esc}]8;;{esc}\\"
+
+
+def _should_use_color(stream, color_mode: str) -> bool:
+    if color_mode not in COLOR_MODES:
+        return False
+    if color_mode == "never":
+        return False
+    if color_mode == "always":
+        return True
+    if os.getenv("NO_COLOR") is not None:
+        return False
+    if os.getenv("TERM") == "dumb":
+        return False
+    return stream.isatty()
+
+
+def _style(text: str, *, color: str, stream, color_mode: str) -> str:
+    if not _should_use_color(stream, color_mode):
+        return text
+    code = ANSI_COLORS.get(color)
+    if code is None:
+        return text
+    return f"{code}{text}{ANSI_RESET}"
 
 
 def _copy_to_clipboard(text: str) -> bool:
@@ -113,24 +145,33 @@ def _copy_to_clipboard(text: str) -> bool:
     return False
 
 
-def _print_wolfram_hint(expr: str, copy_link: bool = False) -> None:
+def _print_wolfram_hint(expr: str, copy_link: bool = False, color_mode: str = "auto") -> None:
     url = _wolframalpha_url(expr)
     # Always print raw URL for maximum terminal compatibility (e.g., iTerm2 auto-linking).
-    print(f"hint: try WolframAlpha: {url}", file=sys.stderr)
+    print(
+        _style(f"hint: try WolframAlpha: {url}", color="yellow", stream=sys.stderr, color_mode=color_mode),
+        file=sys.stderr,
+    )
     if copy_link:
         if _copy_to_clipboard(url):
-            print("hint: WolframAlpha link copied to clipboard", file=sys.stderr)
+            print(
+                _style("hint: WolframAlpha link copied to clipboard", color="yellow", stream=sys.stderr, color_mode=color_mode),
+                file=sys.stderr,
+            )
         else:
-            print("hint: clipboard copy unavailable on this system", file=sys.stderr)
+            print(
+                _style("hint: clipboard copy unavailable on this system", color="yellow", stream=sys.stderr, color_mode=color_mode),
+                file=sys.stderr,
+            )
 
 
-def _print_error(exc: Exception, expr: str | None = None) -> None:
-    print(f"E: {exc}", file=sys.stderr)
+def _print_error(exc: Exception, expr: str | None = None, color_mode: str = "auto") -> None:
+    print(_style(f"E: {exc}", color="red", stream=sys.stderr, color_mode=color_mode), file=sys.stderr)
     hint = _hint_for_error(str(exc), expr=expr)
     if hint:
-        print(f"hint: {hint}", file=sys.stderr)
+        print(_style(f"hint: {hint}", color="yellow", stream=sys.stderr, color_mode=color_mode), file=sys.stderr)
     if expr:
-        _print_wolfram_hint(expr)
+        _print_wolfram_hint(expr, color_mode=color_mode)
 
 
 def _hint_for_error(message: str, expr: str | None = None) -> str | None:
@@ -204,12 +245,13 @@ def _print_update_status() -> None:
     print(f"update with: {UPDATE_CMD}")
 
 
-def _parse_options(args: list[str]) -> tuple[str, bool, bool, bool, bool, list[str]]:
+def _parse_options(args: list[str]) -> tuple[str, bool, bool, bool, bool, str, list[str]]:
     format_mode = "plain"
     relaxed = True
     simplify_output = True
     always_wa = False
     copy_wa = False
+    color_mode = "auto"
     idx = 0
     while idx < len(args) and args[idx].startswith("-"):
         arg = args[idx]
@@ -260,16 +302,32 @@ def _parse_options(args: list[str]) -> tuple[str, bool, bool, bool, bool, list[s
             copy_wa = True
             idx += 1
             continue
+        if arg == "--color":
+            if idx + 1 >= len(args):
+                raise ValueError("missing value for --color")
+            mode = args[idx + 1]
+            if mode not in COLOR_MODES:
+                raise ValueError(f"unknown color mode: {mode}")
+            color_mode = mode
+            idx += 2
+            continue
+        if arg.startswith("--color="):
+            mode = arg.split("=", 1)[1]
+            if mode not in COLOR_MODES:
+                raise ValueError(f"unknown color mode: {mode}")
+            color_mode = mode
+            idx += 1
+            continue
         if arg == "--":
             idx += 1
             break
         if arg.startswith("--"):
             raise ValueError(f"unknown option: {arg}")
         break
-    return format_mode, relaxed, simplify_output, always_wa, copy_wa, args[idx:]
+    return format_mode, relaxed, simplify_output, always_wa, copy_wa, color_mode, args[idx:]
 
 
-def _handle_repl_command(expr: str) -> bool:
+def _handle_repl_command(expr: str, color_mode: str = "auto") -> bool:
     if expr in {":q", ":quit", ":x"}:
         raise EOFError
     if expr in {":h", ":help"}:
@@ -285,21 +343,37 @@ def _handle_repl_command(expr: str) -> bool:
         _print_update_status()
         return True
     if expr.startswith(":"):
-        print("E: unknown command", file=sys.stderr)
-        print("hint: use :h to list commands", file=sys.stderr)
+        print(_style("E: unknown command", color="red", stream=sys.stderr, color_mode=color_mode), file=sys.stderr)
+        print(
+            _style("hint: use :h to list commands", color="yellow", stream=sys.stderr, color_mode=color_mode),
+            file=sys.stderr,
+        )
         return True
     return False
+
+
+def _try_parse_repl_inline_options(expr: str):
+    line = expr.strip()
+    if line.startswith(f"{CLI_NAME} "):
+        line = line[len(CLI_NAME) :].strip()
+    elif not line.startswith("-"):
+        return None
+    try:
+        tokens = shlex.split(line)
+    except ValueError as exc:
+        raise ValueError(f"invalid REPL option input: {exc}") from exc
+    return _parse_options(tokens)
 
 
 def run(argv: list[str] | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
 
     try:
-        format_mode, relaxed, simplify_output, always_wa, copy_wa, remaining = _parse_options(args)
+        format_mode, relaxed, simplify_output, always_wa, copy_wa, color_mode, remaining = _parse_options(args)
     except SystemExit:
         return 0
     except Exception as exc:
-        _print_error(exc)
+        _print_error(exc, color_mode="auto")
         return 1
 
     if remaining:
@@ -321,40 +395,62 @@ def run(argv: list[str] | None = None) -> int:
                 )
             )
             if always_wa or _is_complex_expression(expr):
-                _print_wolfram_hint(expr, copy_link=copy_wa)
+                _print_wolfram_hint(expr, copy_link=copy_wa, color_mode=color_mode)
             return 0
         except Exception as exc:
-            _print_error(exc, expr)
+            _print_error(exc, expr, color_mode=color_mode)
             return 1
 
     print(f"{CLI_NAME} v{VERSION} REPL. :h help, :q quit, Ctrl-D exit.")
     print(f"update: {UPDATE_CMD}")
     session_locals: dict = {}
+    repl_format_mode = format_mode
+    repl_relaxed = relaxed
+    repl_simplify_output = simplify_output
+    repl_always_wa = always_wa
+    repl_copy_wa = copy_wa
+    repl_color_mode = color_mode
+    expr: str | None = None
     while True:
         try:
             expr = input(PROMPT).strip()
             if not expr:
                 continue
-            if _handle_repl_command(expr):
+            if _handle_repl_command(expr, color_mode=repl_color_mode):
                 continue
+            parsed_inline = _try_parse_repl_inline_options(expr)
+            if parsed_inline is not None:
+                (
+                    repl_format_mode,
+                    repl_relaxed,
+                    repl_simplify_output,
+                    repl_always_wa,
+                    repl_copy_wa,
+                    repl_color_mode,
+                    remaining,
+                ) = parsed_inline
+                if not remaining:
+                    print("hint: REPL options updated for this session", file=sys.stderr)
+                    continue
+                expr = " ".join(remaining)
             print(
                 _format_result(
                     evaluate(
                         expr,
-                        relaxed=relaxed,
+                        relaxed=repl_relaxed,
                         session_locals=session_locals,
-                        simplify_output=simplify_output,
+                        simplify_output=repl_simplify_output,
                     ),
-                    format_mode,
+                    repl_format_mode,
                 )
             )
-            if always_wa or _is_complex_expression(expr):
-                _print_wolfram_hint(expr, copy_link=copy_wa)
+            if repl_always_wa or _is_complex_expression(expr):
+                _print_wolfram_hint(expr, copy_link=repl_copy_wa, color_mode=repl_color_mode)
         except (EOFError, KeyboardInterrupt):
             print()
             return 0
         except Exception as exc:
-            _print_error(exc, expr)
+            _print_error(exc, expr=expr, color_mode=repl_color_mode)
 
 
 if __name__ == "__main__":

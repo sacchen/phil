@@ -62,6 +62,11 @@ phil --latex-inline '<expression>'
 phil --latex-block '<expression>'
 phil --wa '<expression>'
 phil --wa --copy-wa '<expression>'
+phil --color auto '<expression>'
+phil --color always '<expression>'
+phil --color never '<expression>'
+phil --latex 'dy/dx = y'
+phil 'dsolve(Eq(d(y(x), x), y(x)), y(x))'
 phil :examples
 ```
 
@@ -85,6 +90,7 @@ Unknown `:` commands return a short correction hint.
 Evaluation errors also include: `hint: try WolframAlpha: <url>`.
 Complex expressions also print a WolframAlpha equivalent hint after successful evaluation.
 REPL sessions also keep `ans` (last result) and support assignment such as `A = Matrix([[1,2],[3,4]])`.
+REPL also accepts inline CLI options, e.g. `--latex d(x^2, x)` or `phil --latex "d(x^2, x)"`.
 
 ### Help
 
@@ -99,6 +105,13 @@ phil --help
 - Use `--wa` to always print the link.
 - Use `--copy-wa` to copy the link to your clipboard when shown.
 - Full URLs are usually clickable directly in modern terminals.
+
+### Color diagnostics
+
+- Use `--color auto|always|never` to control ANSI color on diagnostic lines (`E:` and `hint:`).
+- Default is `--color auto` (enabled only on TTY stderr, disabled for pipes/non-interactive output).
+- `NO_COLOR` disables auto color.
+- `--color always` forces color even when output is not a TTY.
 
 ## Updates
 
@@ -157,6 +170,7 @@ So inputs like these work directly:
 ```bash
 phil '(1 - 25e^5)e^{-5t} + (25e^5 - 1)t e^{-5t} + t e^{-5t} ln(t)'
 phil '(854/2197)e^{8t}+(1343/2197)e^{-5t}+((9/26)t^2 -(9/169)t)e^{8t}'
+phil 'dy/dx = y'
 ```
 
 Use strict parsing if needed:

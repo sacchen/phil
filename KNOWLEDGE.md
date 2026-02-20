@@ -21,6 +21,7 @@ Project-specific knowledge for contributors.
   - `d(expr, var)`
   - `d(expr)` when variable can be inferred uniquely
   - Leibniz shorthand: `d(sin(x))/dx`, `df(t)/dt`
+  - ODE shorthand equation: `dy/dx = y` (normalized to `Eq(Derivative(y(x), x), y(x))`)
 - Integral:
   - `int(expr, var)`
   - `int(expr)` with unique variable inference
@@ -30,6 +31,7 @@ Project-specific knowledge for contributors.
 - Session behavior (REPL):
   - assignment: `A = ...`
   - `ans` = last result
+  - inline options are accepted (example: `--latex d(x^2, x)`)
 
 ## Formatting Modes
 
@@ -38,6 +40,7 @@ Project-specific knowledge for contributors.
 - `--format latex`
 - `--format latex-inline`
 - `--format latex-block`
+- `--color auto|always|never` (diagnostic stderr coloring only)
 
 Legacy aliases:
 
