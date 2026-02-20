@@ -75,6 +75,9 @@ def test_hint_for_error_messages():
     assert "documented functions" in cli._hint_for_error("name 'a' is not defined")
     assert "derivative syntax" in cli._hint_for_error("invalid syntax", expr="d(sin(x)/dx")
     assert "matrix syntax" in cli._hint_for_error("invalid syntax", expr="Matrix([1,2],[3,4])")
+    assert "Eq syntax" in cli._hint_for_error("invalid syntax", expr="Eq(d(y(x), x) y(x))")
+    assert "dsolve expects an equation" in cli._hint_for_error("invalid syntax", expr="dsolve(d(y(x), x), y(x))")
+    assert "LaTeX fraction syntax" in cli._hint_for_error("invalid syntax", expr=r"\frac{dy}{dx")
     assert "y(x)" in cli._hint_for_error("dsolve() and classify_ode() only work with functions of one variable, not y")
     assert "blocked patterns" in cli._hint_for_error("blocked token in expression")
     assert "enter a math expression" in cli._hint_for_error("empty expression")
@@ -258,10 +261,14 @@ def test_run_help_returns_zero(capsys):
 def test_run_shortcut_commands(monkeypatch, capsys):
     monkeypatch.setattr(cli, "_print_update_status", lambda: print("status"))
     assert cli.run([":examples"]) == 0
+    assert cli.run([":tutorial"]) == 0
+    assert cli.run([":ode"]) == 0
     assert cli.run([":version"]) == 0
     assert cli.run([":update"]) == 0
     out = capsys.readouterr().out
     assert "examples:" in out
+    assert "guided tour:" in out
+    assert "ode quick reference:" in out
     assert "phil v" in out
     assert "status" in out
 
@@ -318,12 +325,39 @@ def test_handle_repl_commands(monkeypatch, capsys):
     monkeypatch.setattr(cli, "_print_update_status", lambda: print("status"))
     assert cli._handle_repl_command(":h") is True
     assert cli._handle_repl_command(":examples") is True
+    assert cli._handle_repl_command(":ode") is True
+    assert cli._handle_repl_command(":tutorial") is True
+    assert cli._handle_repl_command(":tour") is True
     assert cli._handle_repl_command(":version") is True
     assert cli._handle_repl_command(":check") is True
     assert cli._handle_repl_command(":wat") is True
     assert cli._handle_repl_command("2+2") is False
-    err = capsys.readouterr().err
+    captured = capsys.readouterr()
+    err = captured.err
+    out = captured.out
+    assert "guided tour:" in out
+    assert "ode quick reference:" in out
     assert "unknown command" in err
+
+
+def test_tutorial_command_flow(capsys):
+    state = {"active": False, "index": 0}
+    assert cli._tutorial_command(":next", state) is True
+    err = capsys.readouterr().err
+    assert "start with :tutorial" in err
+    assert cli._tutorial_command(":tutorial", state) is True
+    out = capsys.readouterr().out
+    assert "tutorial mode started" in out
+    assert "step 1/6" in out
+    assert cli._tutorial_command(":next", state) is True
+    out = capsys.readouterr().out
+    assert "step 2/6" in out
+    assert cli._tutorial_command(":repeat", state) is True
+    out = capsys.readouterr().out
+    assert "step 2/6" in out
+    assert cli._tutorial_command(":done", state) is True
+    out = capsys.readouterr().out
+    assert "tutorial mode ended" in out
 
 
 def test_try_parse_repl_inline_options():
@@ -338,6 +372,12 @@ def test_try_parse_repl_inline_options():
     assert parsed[-1] == ["2+2"]
 
     assert cli._try_parse_repl_inline_options("2+2") is None
+
+
+def test_eq_has_top_level_comma():
+    assert cli._eq_has_top_level_comma("Eq(x, y)") is True
+    assert cli._eq_has_top_level_comma("Eq(d(y(x), x), y(x))") is True
+    assert cli._eq_has_top_level_comma("Eq(d(y(x), x) y(x))") is False
 
 
 def test_main_module_executes():

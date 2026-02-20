@@ -24,6 +24,7 @@ Project links:
 
 - PyPI: https://pypi.org/project/philcalc/
 - Source: https://github.com/sacchen/phil
+- Tutorial: [TUTORIAL.md](TUTORIAL.md)
 
 ## Local Development Install
 
@@ -68,6 +69,8 @@ phil --color never '<expression>'
 phil --latex 'dy/dx = y'
 phil 'dsolve(Eq(d(y(x), x), y(x)), y(x))'
 phil :examples
+phil :tutorial
+phil :ode
 ```
 
 ### Interactive
@@ -81,6 +84,9 @@ REPL commands:
 
 - `:h` / `:help` show help
 - `:examples` show sample expressions
+- `:tutorial` / `:tour` show guided first-run tour
+- `:ode` show ODE cheat sheet and templates
+- `:next` / `:repeat` / `:done` control interactive tutorial mode
 - `:v` / `:version` show current version
 - `:update` / `:check` compare current vs latest version and print update command
 - `:q` / `:quit` / `:x` exit

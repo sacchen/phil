@@ -78,6 +78,20 @@ def test_cli_examples_shortcut():
     assert "examples:" in proc.stdout
 
 
+def test_cli_tutorial_shortcut():
+    proc = run_cli(":tutorial")
+    assert proc.returncode == 0
+    assert "guided tour:" in proc.stdout
+    assert "full tutorial: TUTORIAL.md" in proc.stdout
+
+
+def test_cli_ode_shortcut():
+    proc = run_cli(":ode")
+    assert proc.returncode == 0
+    assert "ode quick reference:" in proc.stdout
+    assert "dsolve(Eq(d(y(x), x), y(x)), y(x))" in proc.stdout
+
+
 def test_repl_help_and_quit():
     proc = subprocess.run(
         [sys.executable, "-m", "calc"],
@@ -90,6 +104,46 @@ def test_repl_help_and_quit():
     assert "phil v" in proc.stdout
     assert ":h help" in proc.stdout
     assert "repl commands:" in proc.stdout
+
+
+def test_repl_tutorial_command():
+    proc = subprocess.run(
+        [sys.executable, "-m", "calc"],
+        input=":tutorial\n:q\n",
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0
+    assert "tutorial mode started" in proc.stdout
+    assert "step 1/6" in proc.stdout
+
+
+def test_repl_interactive_tutorial_flow():
+    proc = subprocess.run(
+        [sys.executable, "-m", "calc"],
+        input=":tutorial\n:next\n:repeat\n:done\n:q\n",
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0
+    assert "tutorial mode started" in proc.stdout
+    assert "step 1/6" in proc.stdout
+    assert "step 2/6" in proc.stdout
+    assert "tutorial mode ended" in proc.stdout
+
+
+def test_repl_ode_command():
+    proc = subprocess.run(
+        [sys.executable, "-m", "calc"],
+        input=":ode\n:q\n",
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0
+    assert "ode quick reference:" in proc.stdout
 
 
 def test_repl_unknown_command_hint():

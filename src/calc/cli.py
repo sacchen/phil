@@ -55,6 +55,11 @@ HELP_TEXT = (
     "repl commands:\n"
     "  :h, :help      show this help\n"
     "  :examples      show example expressions\n"
+    "  :tutorial      show guided tour for new users\n"
+    "  :ode           show ODE quick reference and templates\n"
+    "  :next          next tutorial step (after :tutorial)\n"
+    "  :repeat        repeat current tutorial step\n"
+    "  :done          exit tutorial mode\n"
     "  :v, :version   show version\n"
     "  :update, :check  check current vs latest version\n"
     "  :q, :quit, :x  quit\n"
@@ -75,6 +80,44 @@ EXAMPLES_TEXT = (
     "  (854/2197)e^{8t}+(1343/2197)e^{-5t}+((9/26)t^2 -(9/169)t)e^{8t}\n"
     "  dsolve(Eq(f(t).diff(t), f(t)), f(t))\n"
     "  N(pi, 20)"
+)
+TUTORIAL_TEXT = (
+    "guided tour:\n"
+    "  1) Start: phil '2+2'\n"
+    "  2) Core ops: phil 'd(x^3 + 2*x, x)' / phil 'int(sin(x), x)' / phil 'solve(x^2 - 4, x)'\n"
+    "  3) REPL: phil, then try d(x^2, x), A=Matrix([[1,2],[3,4]]), det(A), ans+1\n"
+    "  4) ODE input: dy/dx = y ; y' = y ; \\frac{dy}{dx} = y\n"
+    "  5) Solve ODE: dsolve(Eq(d(y(x), x), y(x)), y(x))\n"
+    "  6) LaTeX style: $d(x^2, x)$ ; \\sin(x)^2 + \\cos(x)^2\n"
+    "  7) Use :examples for more patterns\n"
+    "full tutorial: TUTORIAL.md"
+)
+ODE_TEXT = (
+    "ode quick reference:\n"
+    "  why Eq(...): dsolve expects an equation object, not raw 'lhs = rhs' text\n"
+    "  why y(x): dsolve expects function notation for dependent variables\n"
+    "\n"
+    "common input forms accepted:\n"
+    "  dy/dx = y\n"
+    "  y' = y\n"
+    "  \\frac{dy}{dx} = y\n"
+    "\n"
+    "canonical dsolve pattern:\n"
+    "  dsolve(Eq(d(y(x), x), y(x)), y(x))\n"
+    "\n"
+    "templates:\n"
+    "  separable: dsolve(Eq(d(y(x), x), x*y(x)), y(x))\n"
+    "  linear:    dsolve(Eq(d(y(x), x) + y(x), exp(x)), y(x))\n"
+    "  2nd order: dsolve(Eq(d(d(y(x), x), x) + y(x), 0), y(x))\n"
+    "  with ICs:  dsolve(Eq(d(y(x), x), y(x)), y(x), ics={y(0): 1})"
+)
+TUTORIAL_STEPS = (
+    "step 1/6\n  run: 1/3 + 1/6\n  expect: 1/2",
+    "step 2/6\n  run: d(x^3 + 2*x, x)\n  expect: 3*x**2 + 2",
+    "step 3/6\n  run: int(sin(x), x)\n  expect: -cos(x)",
+    "step 4/6\n  run: dy/dx = y\n  expect: Eq(y(x), Derivative(y(x), x))",
+    "step 5/6\n  run: dsolve(Eq(d(y(x), x), y(x)), y(x))\n  expect: Eq(y(x), C1*exp(x))",
+    "step 6/6\n  run: --latex d(x^2, x)\n  expect: 2 x",
 )
 COLOR_MODES = {"auto", "always", "never"}
 ANSI_COLORS = {
@@ -183,6 +226,12 @@ def _hint_for_error(message: str, expr: str | None = None) -> str | None:
     if "invalid syntax" in text:
         if expr:
             compact = re.sub(r"\s+", "", expr)
+            if expr.strip().startswith("Eq(") and not _eq_has_top_level_comma(expr):
+                return "Eq syntax: Eq(lhs, rhs), for example Eq(d(y(x), x), y(x))"
+            if "dsolve(" in compact and "eq(" not in compact:
+                return "dsolve expects an equation: use dsolve(Eq(...), y(x))"
+            if "\\frac" in expr:
+                return "LaTeX fraction syntax: \\frac{numerator}{denominator}"
             if "d(" in compact or re.search(r"\bd[A-Za-z0-9_]+/d[A-Za-z0-9_]+\b", compact):
                 return "derivative syntax: d(expr, var) or d(sin(x))/dx or df(t)/dt"
             if "matrix(" in compact.lower():
@@ -202,6 +251,24 @@ def _hint_for_error(message: str, expr: str | None = None) -> str | None:
     if "empty expression" in text:
         return "enter a math expression, or use :examples"
     return None
+
+
+def _eq_has_top_level_comma(expr: str) -> bool:
+    stripped = expr.strip()
+    if not stripped.startswith("Eq("):
+        return True
+    inner = stripped[3:]
+    if inner.endswith(")"):
+        inner = inner[:-1]
+    depth = 0
+    for ch in inner:
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth = max(0, depth - 1)
+        elif ch == "," and depth == 0:
+            return True
+    return False
 
 
 def _format_result(value, format_mode: str) -> str:
@@ -338,6 +405,12 @@ def _handle_repl_command(expr: str, color_mode: str = "auto") -> bool:
     if expr == ":examples":
         print(EXAMPLES_TEXT)
         return True
+    if expr in {":tutorial", ":tour"}:
+        print(TUTORIAL_TEXT)
+        return True
+    if expr == ":ode":
+        print(ODE_TEXT)
+        return True
     if expr in {":v", ":version"}:
         print(f"{CLI_NAME} v{VERSION}")
         return True
@@ -350,6 +423,46 @@ def _handle_repl_command(expr: str, color_mode: str = "auto") -> bool:
             _style("hint: use :h to list commands", color="yellow", stream=sys.stderr, color_mode=color_mode),
             file=sys.stderr,
         )
+        return True
+    return False
+
+
+def _print_tutorial_step(index: int) -> None:
+    print(TUTORIAL_STEPS[index])
+
+
+def _tutorial_command(expr: str, state: dict | None) -> bool:
+    if state is None:
+        return False
+    if expr in {":tutorial", ":tour"}:
+        state["active"] = True
+        state["index"] = 0
+        print("tutorial mode started. use :next, :repeat, :done")
+        _print_tutorial_step(state["index"])
+        return True
+    if expr == ":next":
+        if not state.get("active", False):
+            print("hint: start with :tutorial", file=sys.stderr)
+            return True
+        nxt = state["index"] + 1
+        if nxt >= len(TUTORIAL_STEPS):
+            print("tutorial complete. use :done to exit tutorial mode")
+            return True
+        state["index"] = nxt
+        _print_tutorial_step(state["index"])
+        return True
+    if expr == ":repeat":
+        if not state.get("active", False):
+            print("hint: start with :tutorial", file=sys.stderr)
+            return True
+        _print_tutorial_step(state["index"])
+        return True
+    if expr == ":done":
+        if state.get("active", False):
+            state["active"] = False
+            print("tutorial mode ended")
+        else:
+            print("hint: tutorial is not active; use :tutorial", file=sys.stderr)
         return True
     return False
 
@@ -383,6 +496,12 @@ def run(argv: list[str] | None = None) -> int:
         if expr == ":examples":
             print(EXAMPLES_TEXT)
             return 0
+        if expr == ":ode":
+            print(ODE_TEXT)
+            return 0
+        if expr in {":tutorial", ":tour"}:
+            print(TUTORIAL_TEXT)
+            return 0
         if expr in {":v", ":version"}:
             print(f"{CLI_NAME} v{VERSION}")
             return 0
@@ -412,11 +531,14 @@ def run(argv: list[str] | None = None) -> int:
     repl_always_wa = always_wa
     repl_copy_wa = copy_wa
     repl_color_mode = color_mode
+    tutorial_state = {"active": False, "index": 0}
     expr: str | None = None
     while True:
         try:
             expr = input(PROMPT).strip()
             if not expr:
+                continue
+            if _tutorial_command(expr, tutorial_state):
                 continue
             if _handle_repl_command(expr, color_mode=repl_color_mode):
                 continue

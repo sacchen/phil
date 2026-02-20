@@ -34,6 +34,8 @@ Project-specific knowledge for contributors.
   - assignment: `A = ...`
   - `ans` = last result
   - inline options are accepted (example: `--latex d(x^2, x)`)
+  - guided tutorial commands: `:tutorial`/`:tour`, `:next`, `:repeat`, `:done`
+  - ODE helper command: `:ode`
 
 ## Formatting Modes
 
