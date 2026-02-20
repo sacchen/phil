@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Add human-friendly `ode ...` alias input for solving ODEs (including optional initial conditions like `y(0)=1`).
+- Improve `:ode` help text with a beginner-first readable format.
+- Render `ode ...` plain-mode solutions as `y(x) = ...` instead of raw `Eq(...)`.
+
 ## 0.1.8 - 2026-02-20
 
 - Add `scripts/checks.sh` to run the standard test and coverage gates.

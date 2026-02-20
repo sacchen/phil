@@ -12,7 +12,9 @@ from urllib.error import URLError
 from urllib.parse import quote_plus
 from urllib.request import urlopen
 
+from sympy import Eq, dsolve
 from sympy import latex as to_latex
+from sympy.core.function import AppliedUndef
 
 from .core import evaluate, normalize_expression
 from .diagnostics import (
@@ -115,22 +117,22 @@ TUTORIAL_TEXT = (
 )
 ODE_TEXT = (
     "ode quick reference:\n"
-    "  why Eq(...): dsolve expects an equation object, not raw 'lhs = rhs' text\n"
-    "  why y(x): dsolve expects function notation for dependent variables\n"
+    "  quick start (human style):\n"
+    "    ode y' = y\n"
+    "    ode y'' + y = 0\n"
+    "    ode y' = y, y(0)=1\n"
     "\n"
-    "common input forms accepted:\n"
+    "what you can type:\n"
     "  dy/dx = y\n"
     "  y' = y\n"
     "  \\frac{dy}{dx} = y\n"
     "\n"
-    "canonical dsolve pattern:\n"
+    "internal equivalent (advanced):\n"
     "  dsolve(Eq(d(y(x), x), y(x)), y(x))\n"
     "\n"
-    "templates:\n"
-    "  separable: dsolve(Eq(d(y(x), x), x*y(x)), y(x))\n"
-    "  linear:    dsolve(Eq(d(y(x), x) + y(x), exp(x)), y(x))\n"
-    "  2nd order: dsolve(Eq(d(d(y(x), x), x) + y(x), 0), y(x))\n"
-    "  with ICs:  dsolve(Eq(d(y(x), x), y(x)), y(x), ics={y(0): 1})"
+    "notes:\n"
+    "  Eq(...) is equation form (not assignment)\n"
+    "  y(x) means dependent function notation required by dsolve\n"
 )
 TUTORIAL_STEPS = (
     "step 1/6\n  run: 1/3 + 1/6\n  expect: 1/2",
@@ -284,10 +286,93 @@ def _format_json_result(expr: str, relaxed: bool, value) -> str:
     return dumps(payload, separators=(",", ":"))
 
 
-def _render_value(value, *, format_mode: str, expr: str, relaxed: bool) -> str:
+def _render_value(value, *, format_mode: str, expr: str, relaxed: bool, parsed_expr: str | None = None) -> str:
     if format_mode == "json":
-        return _format_json_result(expr, relaxed, value)
+        if parsed_expr is None:
+            return _format_json_result(expr, relaxed, value)
+        payload = {"input": expr, "parsed": parsed_expr, "result": str(value)}
+        return dumps(payload, separators=(",", ":"))
     return _format_result(value, format_mode)
+
+
+def _split_top_level_commas(text: str) -> list[str]:
+    parts: list[str] = []
+    current: list[str] = []
+    depth = 0
+    for ch in text:
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth = max(0, depth - 1)
+        if ch == "," and depth == 0:
+            piece = "".join(current).strip()
+            if piece:
+                parts.append(piece)
+            current = []
+            continue
+        current.append(ch)
+    tail = "".join(current).strip()
+    if tail:
+        parts.append(tail)
+    return parts
+
+
+def _infer_ode_dependent(eq_value: Eq):
+    candidates = sorted(eq_value.atoms(AppliedUndef), key=str)
+    if not candidates:
+        return None
+    return candidates[0]
+
+
+def _evaluate_ode_alias(
+    expr: str,
+    *,
+    relaxed: bool,
+    simplify_output: bool,
+    session_locals: dict | None = None,
+):
+    body = expr[4:].strip()
+    if not body:
+        raise ValueError("ode expects an equation, e.g. ode y' = y")
+
+    pieces = _split_top_level_commas(body)
+    if not pieces:
+        raise ValueError("ode expects an equation, e.g. ode y' = y")
+    equation_text, ic_texts = pieces[0], pieces[1:]
+
+    eq_value = evaluate(
+        equation_text,
+        relaxed=relaxed,
+        session_locals=session_locals,
+        simplify_output=simplify_output,
+    )
+    if not isinstance(eq_value, Eq):
+        raise ValueError("ode expects an equation, e.g. ode y' = y")
+
+    dep = _infer_ode_dependent(eq_value)
+    if dep is None:
+        raise ValueError("could not infer dependent function; use y(x)-style notation")
+
+    ics: dict = {}
+    for ic_text in ic_texts:
+        ic_value = evaluate(
+            ic_text,
+            relaxed=relaxed,
+            session_locals=session_locals,
+            simplify_output=simplify_output,
+        )
+        if not isinstance(ic_value, Eq):
+            raise ValueError(f"initial condition must be an equation: {ic_text}")
+        ics[ic_value.lhs] = ic_value.rhs
+
+    if ics:
+        result = dsolve(eq_value, dep, ics=ics)
+        ics_rendered = ", ".join(f"{lhs}: {rhs}" for lhs, rhs in ics.items())
+        parsed_expr = f"dsolve({eq_value}, {dep}, ics={{{ics_rendered}}})"
+    else:
+        result = dsolve(eq_value, dep)
+        parsed_expr = f"dsolve({eq_value}, {dep})"
+    return result, parsed_expr
 
 
 def _latest_pypi_version() -> str | None:
@@ -510,15 +595,37 @@ def _execute_expression(
     color_mode: str,
     session_locals: dict | None = None,
 ) -> None:
-    _print_relaxed_rewrite_hints(expr, relaxed, color_mode)
-    _print_parse_explanation(expr, relaxed, explain_parse, color_mode)
-    value = evaluate(
-        expr,
-        relaxed=relaxed,
-        session_locals=session_locals,
-        simplify_output=simplify_output,
-    )
-    print(_render_value(value, format_mode=format_mode, expr=expr, relaxed=relaxed))
+    is_ode_alias = expr.strip().lower().startswith("ode ")
+    if is_ode_alias:
+        value, parsed_expr = _evaluate_ode_alias(
+            expr,
+            relaxed=relaxed,
+            simplify_output=simplify_output,
+            session_locals=session_locals,
+        )
+        if explain_parse:
+            print(_style(f"hint: parsed as: {parsed_expr}", color="yellow", stream=sys.stderr, color_mode=color_mode), file=sys.stderr)
+        if format_mode == "plain" and isinstance(value, Eq):
+            rendered = f"{value.lhs} = {value.rhs}"
+        else:
+            rendered = _render_value(
+                value,
+                format_mode=format_mode,
+                expr=expr,
+                relaxed=relaxed,
+                parsed_expr=parsed_expr,
+            )
+    else:
+        _print_relaxed_rewrite_hints(expr, relaxed, color_mode)
+        _print_parse_explanation(expr, relaxed, explain_parse, color_mode)
+        value = evaluate(
+            expr,
+            relaxed=relaxed,
+            session_locals=session_locals,
+            simplify_output=simplify_output,
+        )
+        rendered = _render_value(value, format_mode=format_mode, expr=expr, relaxed=relaxed)
+    print(rendered)
     if always_wa or _is_complex_expression(expr):
         _print_wolfram_hint(expr, copy_link=copy_wa, color_mode=color_mode)
 

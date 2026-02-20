@@ -68,6 +68,8 @@ phil --wa --copy-wa '<expression>'
 phil --color auto '<expression>'
 phil --color always '<expression>'
 phil --color never '<expression>'
+phil "ode y' = y"
+phil "ode y' = y, y(0)=1"
 phil --latex 'dy/dx = y'
 phil 'dsolve(Eq(d(y(x), x), y(x)), y(x))'
 phil :examples
@@ -99,6 +101,7 @@ Evaluation errors also include: `hint: try WolframAlpha: <url>`.
 Complex expressions also print a WolframAlpha equivalent hint after successful evaluation.
 REPL sessions also keep `ans` (last result) and support assignment such as `A = Matrix([[1,2],[3,4]])`.
 REPL also accepts inline CLI options, e.g. `--latex d(x^2, x)` or `phil --latex "d(x^2, x)"`.
+For readable ODE solving, use `ode ...` input (example: `ode y' = y`).
 
 ### Help
 

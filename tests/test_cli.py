@@ -110,7 +110,20 @@ def test_cli_ode_shortcut():
     proc = run_cli(":ode")
     assert proc.returncode == 0
     assert "ode quick reference:" in proc.stdout
+    assert "quick start (human style):" in proc.stdout
     assert "dsolve(Eq(d(y(x), x), y(x)), y(x))" in proc.stdout
+
+
+def test_cli_ode_alias_solves_with_readable_output():
+    proc = run_cli("ode y' = y")
+    assert proc.returncode == 0
+    assert "y(x) = C1*exp(x)" in proc.stdout
+
+
+def test_cli_ode_alias_with_ics():
+    proc = run_cli("ode y' = y, y(0)=1")
+    assert proc.returncode == 0
+    assert "y(x) = exp(x)" in proc.stdout
 
 
 def test_repl_help_and_quit():
@@ -165,6 +178,18 @@ def test_repl_ode_command():
     )
     assert proc.returncode == 0
     assert "ode quick reference:" in proc.stdout
+
+
+def test_repl_ode_alias():
+    proc = subprocess.run(
+        [sys.executable, "-m", "calc"],
+        input="ode y' = y\n:q\n",
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0
+    assert "y(x) = C1*exp(x)" in proc.stdout
 
 
 def test_repl_unknown_command_hint():

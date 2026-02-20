@@ -108,6 +108,66 @@ def test_format_json_result():
     assert out == '{"input":"sinx","parsed":"sin(x)","result":"sin(x)"}'
 
 
+def test_split_top_level_commas_for_ode_inputs():
+    assert cli._split_top_level_commas("y' = y, y(0)=1") == ["y' = y", "y(0)=1"]
+    assert cli._split_top_level_commas("y' = x*y, y(0)=1, y(1)=2") == ["y' = x*y", "y(0)=1", "y(1)=2"]
+
+
+def test_evaluate_ode_alias_success():
+    value, parsed = cli._evaluate_ode_alias("ode y' = y", relaxed=True, simplify_output=True, session_locals={})
+    assert "Eq(y(x), C1*exp(x))" in str(value)
+    assert parsed.startswith("dsolve(Eq(")
+
+
+def test_evaluate_ode_alias_with_ics():
+    value, parsed = cli._evaluate_ode_alias("ode y' = y, y(0)=1", relaxed=True, simplify_output=True, session_locals={})
+    assert str(value) == "Eq(y(x), exp(x))"
+    assert "ics={y(0): 1}" in parsed
+
+
+def test_evaluate_ode_alias_errors():
+    with pytest.raises(ValueError, match="ode expects an equation"):
+        cli._evaluate_ode_alias("ode ", relaxed=True, simplify_output=True, session_locals={})
+    with pytest.raises(ValueError, match="ode expects an equation"):
+        cli._evaluate_ode_alias("ode x+1", relaxed=True, simplify_output=True, session_locals={})
+    with pytest.raises(ValueError, match="could not infer dependent function"):
+        cli._evaluate_ode_alias("ode Eq(x, 1)", relaxed=True, simplify_output=True, session_locals={})
+    with pytest.raises(ValueError, match="initial condition must be an equation"):
+        cli._evaluate_ode_alias("ode y' = y, 1", relaxed=True, simplify_output=True, session_locals={})
+
+
+def test_execute_expression_ode_alias_plain_and_json(monkeypatch, capsys):
+    monkeypatch.setattr(cli, "_print_wolfram_hint", lambda *a, **k: None)
+    cli._execute_expression(
+        "ode y' = y",
+        format_mode="plain",
+        relaxed=True,
+        simplify_output=True,
+        explain_parse=False,
+        always_wa=False,
+        copy_wa=False,
+        color_mode="never",
+        session_locals={},
+    )
+    out = capsys.readouterr().out
+    assert "y(x) = C1*exp(x)" in out
+
+    cli._execute_expression(
+        "ode y' = y",
+        format_mode="json",
+        relaxed=True,
+        simplify_output=True,
+        explain_parse=True,
+        always_wa=False,
+        copy_wa=False,
+        color_mode="never",
+        session_locals={},
+    )
+    captured = capsys.readouterr()
+    assert '"parsed":"dsolve(' in captured.out
+    assert "hint: parsed as: dsolve(" in captured.err
+
+
 def test_format_result_pretty():
     from sympy import Matrix
 
