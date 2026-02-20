@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import os
-import re
 import shlex
 import shutil
 import subprocess
 import sys
+from dataclasses import dataclass
 from json import JSONDecodeError, dumps, loads
 from importlib.metadata import PackageNotFoundError, version as package_version
 from urllib.error import URLError
@@ -14,11 +14,31 @@ from urllib.request import urlopen
 
 from sympy import latex as to_latex
 
-from .core import evaluate, normalize_expression, relaxed_function_rewrites, reserved_name_suggestion
+from .core import evaluate, normalize_expression
+from .diagnostics import (
+    eq_has_top_level_comma as _eq_has_top_level_comma,
+    hint_for_error as _hint_for_error,
+    parse_explanation,
+    relaxed_rewrite_messages,
+    should_print_wolfram_hint,
+)
 
 PACKAGE_NAME = "philcalc"
 CLI_NAME = "phil"
 UPDATE_CMD = "uv tool upgrade philcalc"
+FORMAT_MODES = ("plain", "pretty", "latex", "latex-inline", "latex-block", "json")
+
+
+@dataclass(frozen=True)
+class CLIOptions:
+    format_mode: str = "plain"
+    relaxed: bool = True
+    simplify_output: bool = True
+    explain_parse: bool = False
+    always_wa: bool = False
+    copy_wa: bool = False
+    color_mode: str = "auto"
+    remaining: tuple[str, ...] = ()
 
 
 def _calc_version() -> str:
@@ -209,13 +229,6 @@ def _print_wolfram_hint(expr: str, copy_link: bool = False, color_mode: str = "a
             )
 
 
-def _should_print_wolfram_hint(exc: Exception) -> bool:
-    text = str(exc).lower()
-    if "cannot assign reserved name" in text:
-        return False
-    return True
-
-
 def _print_error(
     exc: Exception,
     expr: str | None = None,
@@ -226,21 +239,15 @@ def _print_error(
     hint = _hint_for_error(str(exc), expr=expr, session_locals=session_locals)
     if hint:
         print(_style(f"hint: {hint}", color="yellow", stream=sys.stderr, color_mode=color_mode), file=sys.stderr)
-    if expr and _should_print_wolfram_hint(exc):
+    if expr and should_print_wolfram_hint(exc):
         _print_wolfram_hint(expr, color_mode=color_mode)
 
 
 def _print_relaxed_rewrite_hints(expr: str, relaxed: bool, color_mode: str) -> None:
-    if not relaxed:
-        return
-    seen: set[tuple[str, str]] = set()
-    for original, rewritten in relaxed_function_rewrites(expr):
-        if (original, rewritten) in seen:
-            continue
-        seen.add((original, rewritten))
+    for message in relaxed_rewrite_messages(expr, relaxed):
         print(
             _style(
-                f"hint: interpreted '{original}' as '{rewritten}'",
+                f"hint: {message}",
                 color="yellow",
                 stream=sys.stderr,
                 color_mode=color_mode,
@@ -250,74 +257,10 @@ def _print_relaxed_rewrite_hints(expr: str, relaxed: bool, color_mode: str) -> N
 
 
 def _print_parse_explanation(expr: str, relaxed: bool, enabled: bool, color_mode: str) -> None:
-    if not enabled:
+    message = parse_explanation(expr, relaxed, enabled)
+    if not message:
         return
-    normalized = normalize_expression(expr, relaxed=relaxed)
-    print(
-        _style(f"hint: parsed as: {normalized}", color="yellow", stream=sys.stderr, color_mode=color_mode),
-        file=sys.stderr,
-    )
-
-
-def _hint_for_error(message: str, expr: str | None = None, session_locals: dict | None = None) -> str | None:
-    text = message.lower()
-    if "unexpected eof" in text:
-        if expr and ("/d" in expr or expr.strip().startswith("d(")):
-            return "derivative syntax: d(expr, var) or d(sin(x))/dx or df(t)/dt"
-        return "check missing closing ')' or unmatched quote"
-    if "invalid syntax" in text:
-        if expr:
-            compact = re.sub(r"\s+", "", expr)
-            if expr.strip().startswith("Eq(") and not _eq_has_top_level_comma(expr):
-                return "Eq syntax: Eq(lhs, rhs), for example Eq(d(y(x), x), y(x))"
-            if "dsolve(" in compact and "eq(" not in compact:
-                return "dsolve expects an equation: use dsolve(Eq(...), y(x))"
-            if "\\frac" in expr:
-                return "LaTeX fraction syntax: \\frac{numerator}{denominator}"
-            if "d(" in compact or re.search(r"\bd[A-Za-z0-9_]+/d[A-Za-z0-9_]+\b", compact):
-                return "derivative syntax: d(expr, var) or d(sin(x))/dx or df(t)/dt"
-            if "matrix(" in compact.lower():
-                return "matrix syntax: Matrix([[1,2],[3,4]])"
-        return "check commas and brackets; try :examples for working patterns"
-    if "cannot assign reserved name:" in text:
-        if "cannot assign reserved name: f" in text:
-            suggestion = reserved_name_suggestion("f", session_locals=session_locals)
-            if suggestion:
-                return f"'f' is reserved for function notation in ODEs; try '{suggestion}'"
-            return "'f' is reserved for function notation in ODEs; choose another variable name (e.g. ff)"
-        return "that name is reserved by phil internals; choose a different variable name"
-    if "name '" in text and "is not defined" in text:
-        if expr and ("/d" in expr or expr.strip().startswith("d")):
-            return "derivative syntax: d(expr, var) or d(sin(x))/dx or df(t)/dt"
-        return "use one of: x y z t pi e f and documented functions"
-    if "dsolve() and classify_ode() only work with functions of one variable" in text:
-        return "for ODEs, use function notation: y(x) and dsolve(Eq(d(y(x), x), ...), y(x))"
-    if "data type not understood" in text:
-        if expr and "matrix(" in expr.lower():
-            return "matrix syntax: Matrix([[1,2],[3,4]])"
-    if "blocked token" in text:
-        return "remove blocked patterns like '__', ';', or newlines"
-    if "empty expression" in text:
-        return "enter a math expression, or use :examples"
-    return None
-
-
-def _eq_has_top_level_comma(expr: str) -> bool:
-    stripped = expr.strip()
-    if not stripped.startswith("Eq("):
-        return True
-    inner = stripped[3:]
-    if inner.endswith(")"):
-        inner = inner[:-1]
-    depth = 0
-    for ch in inner:
-        if ch == "(":
-            depth += 1
-        elif ch == ")":
-            depth = max(0, depth - 1)
-        elif ch == "," and depth == 0:
-            return True
-    return False
+    print(_style(f"hint: {message}", color="yellow", stream=sys.stderr, color_mode=color_mode), file=sys.stderr)
 
 
 def _format_result(value, format_mode: str) -> str:
@@ -339,6 +282,12 @@ def _format_json_result(expr: str, relaxed: bool, value) -> str:
     normalized = normalize_expression(expr, relaxed=relaxed)
     payload = {"input": expr, "parsed": normalized, "result": str(value)}
     return dumps(payload, separators=(",", ":"))
+
+
+def _render_value(value, *, format_mode: str, expr: str, relaxed: bool) -> str:
+    if format_mode == "json":
+        return _format_json_result(expr, relaxed, value)
+    return _format_result(value, format_mode)
 
 
 def _latest_pypi_version() -> str | None:
@@ -369,7 +318,7 @@ def _print_update_status() -> None:
     print(f"update with: {UPDATE_CMD}")
 
 
-def _parse_options(args: list[str]) -> tuple[str, bool, bool, bool, bool, bool, str, list[str]]:
+def _parse_options(args: list[str]) -> CLIOptions:
     format_mode = "plain"
     relaxed = True
     simplify_output = True
@@ -387,14 +336,14 @@ def _parse_options(args: list[str]) -> tuple[str, bool, bool, bool, bool, bool, 
             if idx + 1 >= len(args):
                 raise ValueError("missing value for --format")
             mode = args[idx + 1]
-            if mode not in {"plain", "pretty", "latex", "latex-inline", "latex-block", "json"}:
+            if mode not in FORMAT_MODES:
                 raise ValueError(f"unknown format mode: {mode}")
             format_mode = mode
             idx += 2
             continue
         if arg.startswith("--format="):
             mode = arg.split("=", 1)[1]
-            if mode not in {"plain", "pretty", "latex", "latex-inline", "latex-block", "json"}:
+            if mode not in FORMAT_MODES:
                 raise ValueError(f"unknown format mode: {mode}")
             format_mode = mode
             idx += 1
@@ -453,7 +402,16 @@ def _parse_options(args: list[str]) -> tuple[str, bool, bool, bool, bool, bool, 
         if arg.startswith("--"):
             raise ValueError(f"unknown option: {arg}")
         break
-    return format_mode, relaxed, simplify_output, explain_parse, always_wa, copy_wa, color_mode, args[idx:]
+    return CLIOptions(
+        format_mode=format_mode,
+        relaxed=relaxed,
+        simplify_output=simplify_output,
+        explain_parse=explain_parse,
+        always_wa=always_wa,
+        copy_wa=copy_wa,
+        color_mode=color_mode,
+        remaining=tuple(args[idx:]),
+    )
 
 
 def _handle_repl_command(expr: str, color_mode: str = "auto") -> bool:
@@ -540,16 +498,50 @@ def _try_parse_repl_inline_options(expr: str):
     return _parse_options(tokens)
 
 
+def _execute_expression(
+    expr: str,
+    *,
+    format_mode: str,
+    relaxed: bool,
+    simplify_output: bool,
+    explain_parse: bool,
+    always_wa: bool,
+    copy_wa: bool,
+    color_mode: str,
+    session_locals: dict | None = None,
+) -> None:
+    _print_relaxed_rewrite_hints(expr, relaxed, color_mode)
+    _print_parse_explanation(expr, relaxed, explain_parse, color_mode)
+    value = evaluate(
+        expr,
+        relaxed=relaxed,
+        session_locals=session_locals,
+        simplify_output=simplify_output,
+    )
+    print(_render_value(value, format_mode=format_mode, expr=expr, relaxed=relaxed))
+    if always_wa or _is_complex_expression(expr):
+        _print_wolfram_hint(expr, copy_link=copy_wa, color_mode=color_mode)
+
+
 def run(argv: list[str] | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
 
     try:
-        format_mode, relaxed, simplify_output, explain_parse, always_wa, copy_wa, color_mode, remaining = _parse_options(args)
+        options = _parse_options(args)
     except SystemExit:
         return 0
     except Exception as exc:
         _print_error(exc, color_mode="auto")
         return 1
+
+    format_mode = options.format_mode
+    relaxed = options.relaxed
+    simplify_output = options.simplify_output
+    explain_parse = options.explain_parse
+    always_wa = options.always_wa
+    copy_wa = options.copy_wa
+    color_mode = options.color_mode
+    remaining = list(options.remaining)
 
     if remaining:
         expr = " ".join(remaining)
@@ -569,15 +561,16 @@ def run(argv: list[str] | None = None) -> int:
             _print_update_status()
             return 0
         try:
-            _print_relaxed_rewrite_hints(expr, relaxed, color_mode)
-            _print_parse_explanation(expr, relaxed, explain_parse, color_mode)
-            value = evaluate(expr, relaxed=relaxed, simplify_output=simplify_output)
-            if format_mode == "json":
-                print(_format_json_result(expr, relaxed, value))
-            else:
-                print(_format_result(value, format_mode))
-            if always_wa or _is_complex_expression(expr):
-                _print_wolfram_hint(expr, copy_link=copy_wa, color_mode=color_mode)
+            _execute_expression(
+                expr,
+                format_mode=format_mode,
+                relaxed=relaxed,
+                simplify_output=simplify_output,
+                explain_parse=explain_parse,
+                always_wa=always_wa,
+                copy_wa=copy_wa,
+                color_mode=color_mode,
+            )
             return 0
         except Exception as exc:
             _print_error(exc, expr, color_mode=color_mode)
@@ -606,34 +599,28 @@ def run(argv: list[str] | None = None) -> int:
                 continue
             parsed_inline = _try_parse_repl_inline_options(expr)
             if parsed_inline is not None:
-                (
-                    repl_format_mode,
-                    repl_relaxed,
-                    repl_simplify_output,
-                    repl_explain_parse,
-                    repl_always_wa,
-                    repl_copy_wa,
-                    repl_color_mode,
-                    remaining,
-                ) = parsed_inline
-                if not remaining:
+                repl_format_mode = parsed_inline.format_mode
+                repl_relaxed = parsed_inline.relaxed
+                repl_simplify_output = parsed_inline.simplify_output
+                repl_explain_parse = parsed_inline.explain_parse
+                repl_always_wa = parsed_inline.always_wa
+                repl_copy_wa = parsed_inline.copy_wa
+                repl_color_mode = parsed_inline.color_mode
+                if not parsed_inline.remaining:
                     print("hint: REPL options updated for this session", file=sys.stderr)
                     continue
-                expr = " ".join(remaining)
-            _print_relaxed_rewrite_hints(expr, repl_relaxed, repl_color_mode)
-            _print_parse_explanation(expr, repl_relaxed, repl_explain_parse, repl_color_mode)
-            value = evaluate(
+                expr = " ".join(parsed_inline.remaining)
+            _execute_expression(
                 expr,
+                format_mode=repl_format_mode,
                 relaxed=repl_relaxed,
-                session_locals=session_locals,
                 simplify_output=repl_simplify_output,
+                explain_parse=repl_explain_parse,
+                always_wa=repl_always_wa,
+                copy_wa=repl_copy_wa,
+                color_mode=repl_color_mode,
+                session_locals=session_locals,
             )
-            if repl_format_mode == "json":
-                print(_format_json_result(expr, repl_relaxed, value))
-            else:
-                print(_format_result(value, repl_format_mode))
-            if repl_always_wa or _is_complex_expression(expr):
-                _print_wolfram_hint(expr, copy_link=repl_copy_wa, color_mode=repl_color_mode)
         except (EOFError, KeyboardInterrupt):
             print()
             return 0

@@ -19,56 +19,46 @@ def test_parse_options_unknown_raises():
 
 
 def test_parse_options_flags():
-    format_mode, relaxed, simplify_output, explain_parse, always_wa, copy_wa, color_mode, rest = cli._parse_options(
-        ["--latex", "--strict", "--explain-parse", "--wa", "--copy-wa", "2+2"]
-    )
-    assert format_mode == "latex"
-    assert relaxed is False
-    assert simplify_output is True
-    assert explain_parse is True
-    assert always_wa is True
-    assert copy_wa is True
-    assert color_mode == "auto"
-    assert rest == ["2+2"]
+    opts = cli._parse_options(["--latex", "--strict", "--explain-parse", "--wa", "--copy-wa", "2+2"])
+    assert opts.format_mode == "latex"
+    assert opts.relaxed is False
+    assert opts.simplify_output is True
+    assert opts.explain_parse is True
+    assert opts.always_wa is True
+    assert opts.copy_wa is True
+    assert opts.color_mode == "auto"
+    assert opts.remaining == ("2+2",)
 
 
 def test_parse_options_latex_modes():
-    format_mode, *_ = cli._parse_options(["--latex-inline", "x"])
-    assert format_mode == "latex-inline"
-    format_mode, *_ = cli._parse_options(["--latex-block", "x"])
-    assert format_mode == "latex-block"
+    assert cli._parse_options(["--latex-inline", "x"]).format_mode == "latex-inline"
+    assert cli._parse_options(["--latex-block", "x"]).format_mode == "latex-block"
 
 
 def test_parse_options_format_and_no_simplify():
-    format_mode, _, simplify_output, _, _, _, _, rest = cli._parse_options(
-        ["--format", "pretty", "--no-simplify", "2+2"]
-    )
-    assert format_mode == "pretty"
-    assert simplify_output is False
-    assert rest == ["2+2"]
+    opts = cli._parse_options(["--format", "pretty", "--no-simplify", "2+2"])
+    assert opts.format_mode == "pretty"
+    assert opts.simplify_output is False
+    assert opts.remaining == ("2+2",)
 
 
 def test_parse_options_json_format():
-    format_mode, *_ = cli._parse_options(["--format", "json", "x"])
-    assert format_mode == "json"
-    format_mode, *_ = cli._parse_options(["--format=json", "x"])
-    assert format_mode == "json"
+    assert cli._parse_options(["--format", "json", "x"]).format_mode == "json"
+    assert cli._parse_options(["--format=json", "x"]).format_mode == "json"
 
 
 def test_parse_options_double_dash_and_single_dash_literal():
-    _, _, _, _, _, _, _, rest = cli._parse_options(["--", "--not-an-option"])
-    assert rest == ["--not-an-option"]
-    _, _, _, _, _, _, _, rest = cli._parse_options(["-1"])
-    assert rest == ["-1"]
+    assert cli._parse_options(["--", "--not-an-option"]).remaining == ("--not-an-option",)
+    assert cli._parse_options(["-1"]).remaining == ("-1",)
 
 
 def test_parse_options_color_modes():
-    *_, color_mode, rest = cli._parse_options(["--color", "always", "2+2"])
-    assert color_mode == "always"
-    assert rest == ["2+2"]
-    *_, color_mode, rest = cli._parse_options(["--color=never", "2+2"])
-    assert color_mode == "never"
-    assert rest == ["2+2"]
+    opts = cli._parse_options(["--color", "always", "2+2"])
+    assert opts.color_mode == "always"
+    assert opts.remaining == ("2+2",)
+    opts = cli._parse_options(["--color=never", "2+2"])
+    assert opts.color_mode == "never"
+    assert opts.remaining == ("2+2",)
 
 
 def test_parse_options_color_mode_errors():
@@ -396,13 +386,13 @@ def test_tutorial_command_flow(capsys):
 def test_try_parse_repl_inline_options():
     parsed = cli._try_parse_repl_inline_options("--latex 2+2")
     assert parsed is not None
-    assert parsed[0] == "latex"
-    assert parsed[-1] == ["2+2"]
+    assert parsed.format_mode == "latex"
+    assert parsed.remaining == ("2+2",)
 
     parsed = cli._try_parse_repl_inline_options("phil --latex 2+2")
     assert parsed is not None
-    assert parsed[0] == "latex"
-    assert parsed[-1] == ["2+2"]
+    assert parsed.format_mode == "latex"
+    assert parsed.remaining == ("2+2",)
 
     assert cli._try_parse_repl_inline_options("2+2") is None
 

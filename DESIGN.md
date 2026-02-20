@@ -20,6 +20,7 @@ print()
 pyproject.toml
 src/calc/core.py    ← parser and evaluator
 src/calc/cli.py     ← command-line interface
+src/calc/diagnostics.py ← hint logic and diagnostic policy
 tests/test_core.py
 tests/test_cli.py
 phil                ← local launcher script (uv run --project)
@@ -79,8 +80,7 @@ Matrix helpers are exposed in the allowed namespace (`Matrix`, `eye`, `zeros`, `
 - `--wa` forces hints for all expressions; `--copy-wa` attempts clipboard copy.
 - `--color auto|always|never` controls ANSI color for diagnostic stderr lines (`E:` and `hint:`).
 - `NO_COLOR` disables auto color mode.
-- Optional LaTeX output via `--latex`, `--latex-inline`, or `--latex-block`.
-- Optional output formats via `--format` (`plain`, `pretty`, `latex`, `latex-inline`, `latex-block`, `json`).
+- Output format selection and user-facing flag docs live in `README.md`.
 - ODE shorthand (`dy/dx = y`, `y' = y`, `y'' + y = 0`) is normalized to `Eq(...)` expressions using `y(x)` semantics.
 - Common LaTeX-style input (`$...$`, `\frac{...}{...}`, `\sin`, `\ln`, `\sqrt{...}`) is normalized before parsing.
 

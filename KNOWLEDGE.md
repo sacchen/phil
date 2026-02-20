@@ -37,19 +37,11 @@ Project-specific knowledge for contributors.
   - guided tutorial commands: `:tutorial`/`:tour`, `:next`, `:repeat`, `:done`
   - ODE helper command: `:ode`
 
-## Formatting Modes
+## CLI Surface
 
-- `--format plain` (default)
-- `--format pretty`
-- `--format latex`
-- `--format latex-inline`
-- `--format latex-block`
-- `--format json` (compact JSON with `input`, `parsed`, `result`; diagnostics on stderr)
-- `--color auto|always|never` (diagnostic stderr coloring only)
-
-Legacy aliases:
-
-- `--latex`, `--latex-inline`, `--latex-block`
+- Canonical end-user flag docs are in `README.md` (usage/options sections).
+- Contributor-facing expectation: diagnostics remain on `stderr`; result payloads remain on `stdout`.
+- `--format json` is the machine-readable interop mode (`input`, `parsed`, `result`).
 
 ## Error UX
 
