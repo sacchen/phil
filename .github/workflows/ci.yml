@@ -17,7 +17,27 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - run: uv run --group dev pytest --cov=calc --cov-report=term-missing --cov-fail-under=90
+      - run: HYPOTHESIS_PROFILE=ci uv run --group dev pytest --cov=calc --cov-report=term-missing --cov-fail-under=90
+
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: scripts/fuzz.sh
+
+  security-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: scripts/security_audit.sh
 
   smoke-install:
     runs-on: ubuntu-latest

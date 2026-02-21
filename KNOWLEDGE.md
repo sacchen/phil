@@ -55,4 +55,8 @@ Project-specific knowledge for contributors.
 
 - Unit + integration + regression tests.
 - Property tests via `hypothesis` for core invariants.
-- CI checks multiple Python versions and install smoke tests.
+- Hypothesis profiles:
+  - `default`: local baseline
+  - `ci`: CI baseline (`HYPOTHESIS_PROFILE=ci`)
+  - `fuzz`: long fuzzing runs (`HYPOTHESIS_PROFILE=fuzz`)
+- CI checks multiple Python versions, dedicated fuzz runs, dependency audit, and install smoke tests.

@@ -18,6 +18,8 @@ Run these before pushing:
 ```bash
 uv run --group dev pytest
 uv run --group dev pytest --cov=calc --cov-report=term-missing --cov-fail-under=90
+scripts/fuzz.sh
+scripts/security_audit.sh
 # or
 scripts/checks.sh
 ```
@@ -29,6 +31,7 @@ Test categories:
 - `regression`: fixed bug cases that must never regress.
 
 Property tests (`hypothesis`) are used for high-value invariants in numeric/symbolic behavior.
+Use `HYPOTHESIS_PROFILE=ci` for standard CI intensity and `HYPOTHESIS_PROFILE=fuzz` for deeper local fuzz runs.
 
 ## Perfect Commit Standard
 
@@ -57,6 +60,8 @@ Commit message guidance:
 CI runs:
 
 - tests + coverage on Python `3.12` and `3.13`
+- fuzz profile property tests on Python `3.12`
+- dependency vulnerability audit via `pip-audit` on Python `3.12`
 - install smoke test (`uv tool install .`, then run `phil`)
 
 If your change adds behavior, add/adjust tests in the correct category.
