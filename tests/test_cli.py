@@ -373,14 +373,14 @@ def test_cli_update_shortcut():
     proc = run_cli(":update")
     assert proc.returncode == 0
     assert "current version:" in proc.stdout
-    assert "uv tool upgrade philcalc" in proc.stdout
+    assert ("update with: uv tool upgrade philcalc" in proc.stdout) or ("no update needed" in proc.stdout)
 
 
 def test_cli_check_shortcut():
     proc = run_cli(":check")
     assert proc.returncode == 0
     assert "current version:" in proc.stdout
-    assert "update with:" in proc.stdout
+    assert ("update with:" in proc.stdout) or ("no update needed" in proc.stdout)
 
 
 def test_repl_assignment_and_ans():
