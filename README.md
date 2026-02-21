@@ -12,6 +12,10 @@ Powered by [SymPy](https://www.sympy.org/).
 - Priorities: speed, correctness, and discoverability.
 - Input should be forgiving: when `phil` makes an assumption, it should make that interpretation visible to the user.
 
+## Roadmap
+
+- See `ROADMAP.md` for planned `v0.3.0` and `v1.0.0` milestones.
+
 ## Install
 
 Requires [uv](https://docs.astral.sh/uv/).
