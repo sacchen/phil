@@ -520,6 +520,7 @@ def _print_repl_startup_update_status() -> None:
         print(line)
 
 
+
 def _repl_startup_update_status_lines() -> list[str]:
     # Only auto-check when actually interactive to avoid noisy/non-deterministic
     # behavior in piped/scripted REPL sessions.
@@ -790,7 +791,11 @@ def run(argv: list[str] | None = None) -> int:
             print()
             return 0
         except Exception as exc:
+
             _print_error(exc, expr=expr, color_mode=repl_color_mode, session_locals=session_locals)
+
+
+
 
 
 if __name__ == "__main__":
